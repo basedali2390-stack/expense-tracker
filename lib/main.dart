@@ -1,4 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package0:flutter/material.dart';
+
+// ==========================================
+// ✏️ আপনার অ্যাপের নাম ও লোগোর লিংক
+// ==========================================
+const String appTitle = "স্মার্ট হিসাব"; 
+const String logoUrl = "https://i.ibb.co/cSK36X2/image.jpg"; 
 
 void main() {
   runApp(const SmartHisabApp());
@@ -26,7 +32,7 @@ class _SmartHisabAppState extends State<SmartHisabApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'স্মার্ট হিসাব',
+      title: appTitle,
       theme: isDarkMode ? ThemeData.dark() : ThemeData.light(),
       home: isPinLocked
           ? PinScreen(onSuccess: unlockApp, isBengali: isBengali)
@@ -81,11 +87,20 @@ class _PinScreenState extends State<PinScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.security, size: 70, color: Colors.teal),
-            const SizedBox(height: 20),
+            CircleAvatar(
+              radius: 45,
+              backgroundColor: Colors.teal.shade100,
+              backgroundImage: NetworkImage(logoUrl),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              appTitle,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.teal),
+            ),
+            const SizedBox(height: 10),
             Text(
               widget.isBengali ? 'পিন কোড দিন (ডিফল্ট: 1234)' : 'Enter PIN (Default: 1234)',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 20),
             Row(
@@ -94,8 +109,8 @@ class _PinScreenState extends State<PinScreen> {
                 4,
                 (i) => Container(
                   margin: const EdgeInsets.all(8),
-                  width: 20,
-                  height: 20,
+                  width: 18,
+                  height: 18,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: i < pin.length ? Colors.teal : Colors.grey.shade300,
@@ -103,7 +118,7 @@ class _PinScreenState extends State<PinScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 25),
             GridView.builder(
               shrinkWrap: true,
               itemCount: 9,
@@ -208,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.isBengali ? 'স্মার্ট হিসাব' : 'Smart Hisab'),
+        title: Text(appTitle),
         actions: [
           IconButton(
             icon: Icon(widget.isDarkMode ? Icons.light_mode : Icons.dark_mode),
@@ -229,7 +244,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
-          // Banner Ad Demo
           if (!widget.isVipUser)
             Container(
               color: Colors.amber.shade200,
@@ -241,8 +255,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(color: Colors.black87),
               ),
             ),
-          
-          // Balance Overview Card
           Card(
             margin: const EdgeInsets.all(16),
             elevation: 4,
@@ -275,8 +287,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
-          // Feature Grid Shortcuts
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
@@ -289,10 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 10),
-
-          // Transaction List
           Expanded(
             child: _transactions.isEmpty
                 ? Center(
@@ -467,7 +474,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
         right: 16,
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MinAxisSize.min,
         children: [
           Text(
             widget.isBengali ? 'নতুন হিসাব লিখুন' : 'Add New Record',
@@ -559,11 +566,11 @@ class NavigationDrawer extends StatelessWidget {
         children: [
           UserAccountsDrawerHeader(
             decoration: const BoxDecoration(color: Colors.teal),
-            accountName: Text(isBengali ? 'ইউজার নাম' : 'User Name'),
+            accountName: Text(appTitle),
             accountEmail: Text(isVipUser ? 'VIP Member 👑' : 'Free User'),
-            currentAccountPicture: const CircleAvatar(
+            currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
-              child: Icon(Icons.person, size: 40, color: Colors.teal),
+              backgroundImage: NetworkImage(logoUrl),
             ),
           ),
           ListTile(
