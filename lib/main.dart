@@ -1,418 +1,585 @@
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(const SmartHisabApp());
+  runApp(const ExpenseTrackerApp());
 }
 
-class SmartHisabApp extends StatefulWidget {
-  const SmartHisabApp({super.key});
-
-  @override
-  State<SmartHisabApp> createState() => _SmartHisabAppState();
-}
-
-class _SmartHisabAppState extends State<SmartHisabApp> {
-  String selectedLanguage = 'BN'; // 'BN' for Bangla, 'EN' for English
-  String selectedCurrency = '৳'; // ৳, ₹, $
-
-  void updateLanguage(String lang) {
-    setState(() {
-      selectedLanguage = lang;
-    });
-  }
-
-  void updateCurrency(String curr) {
-    setState(() {
-      selectedCurrency = curr;
-    });
-  }
+class ExpenseTrackerApp extends StatelessWidget {
+  const ExpenseTrackerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Smart Hisab',
+      title: 'আমার হিসাব খাতা',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.teal,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: MainNavigationScreen(
-        language: selectedLanguage,
-        currency: selectedCurrency,
-        onLangChange: updateLanguage,
-        onCurrChange: updateCurrency,
-      ),
+      home: const HomeScreen(),
     );
   }
 }
 
-class MainNavigationScreen extends StatefulWidget {
-  final String language;
-  final String currency;
-  final Function(String) onLangChange;
-  final Function(String) onCurrChange;
+// ট্রানজেকশন (হিসাব) মডেল
+class TransactionModel {
+  final String title;
+  final double amount;
+  final bool isExpense;
+  final DateTime date;
 
-  const MainNavigationScreen({
-    super.key,
-    required this.language,
-    required this.currency,
-    required this.onLangChange,
-    required this.onCurrChange,
+  TransactionModel({
+    required this.title,
+    required this.amount,
+    required this.isExpense,
+    required this.date,
   });
-
-  @override
-  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _selectedIndex = 0;
+// ফাইল/ক্যাটাগরি মডেল
+class ExpenseFile {
+  final String id;
+  final String title;
+  final Color color;
+  final List<TransactionModel> transactions;
 
-  @override
-  Widget build(BuildContext context) {
-    final bool isBN = widget.language == 'BN';
-    final List<Widget> pages = [
-      HomeScreen(currency: widget.currency, language: widget.language),
-      VoiceScanScreen(language: widget.language),
-      VipSubscriptionScreen(currency: widget.currency, language: widget.language),
-      SettingsScreen(
-        language: widget.language,
-        currency: widget.currency,
-        onLangChange: widget.onLangChange,
-        onCurrChange: widget.onCurrChange,
-      ),
-    ];
+  ExpenseFile({
+    required this.id,
+    required this.title,
+    required this.color,
+    List<TransactionModel>? transactions,
+  }) : transactions = transactions ?? [];
 
-    return Scaffold(
-      body: pages[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.teal,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        items: [
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.home),
-            label: isBN ? 'হোম' : 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.mic),
-            label: isBN ? 'ভয়েস ও স্ক্যান' : 'Voice & Scan',
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.star),
-            label: isBN ? 'VIP প্ল্যান' : 'VIP Plan',
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.settings),
-            label: isBN ? 'সেটিংস' : 'Settings',
-          ),
-        ],
-      ),
-    );
+  double get totalExpense {
+    return transactions
+        .where((t) => t.isExpense)
+        .fold(0.0, (sum, item) => sum + item.amount);
+  }
+
+  double get totalIncome {
+    return transactions
+        .where((t) => !t.isExpense)
+        .fold(0.0, (sum, item) => sum + item.amount);
   }
 }
 
-// ================= ১. হোম স্ক্রিন (ক্যাটাগরি/ফাইল ফিল্টার সহ) =================
 class HomeScreen extends StatefulWidget {
-  final String currency;
-  final String language;
-
-  const HomeScreen({super.key, required this.currency, required this.language});
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  double totalIncome = 5000.0;
-  double totalExpense = 1200.0;
-  String selectedCategoryFilter = 'সব'; // Filter for category files
+  // ইউজারদের তৈরি করা ফাইলগুলো এখানে জমা থাকবে (শুরুতে খালি থাকবে)
+  final List<ExpenseFile> userFiles = [];
 
-  // ডিফল্ট ক্যাটাগরি তালিকা (ফাইলস)
-  final List<String> categories = ['বাড়ির খরচ', 'বাজারের খরচ', 'দোকানের খরচ', 'ব্যক্তিগত', 'অন্যান্য'];
-
-  // লেনদেনের ডাটা
-  final List<Map<String, dynamic>> transactions = [
-    {
-      'title': 'চাল ও সবজি কেনা',
-      'category': 'বাজারের খরচ',
-      'date': '2026-09-01',
-      'amount': 1200.0,
-      'isIncome': false
-    },
-    {
-      'title': 'দোকানের ক্যাশ জমা',
-      'category': 'দোকানের খরচ',
-      'date': '2026-09-01',
-      'amount': 5000.0,
-      'isIncome': true
-    },
+  // র‍্যান্ডম কালার সিলেক্টর
+  final List<Color> cardColors = [
+    Colors.teal.shade700,
+    Colors.blue.shade700,
+    Colors.orange.shade700,
+    Colors.purple.shade700,
+    Colors.indigo.shade700,
+    Colors.pink.shade700,
   ];
 
-  void _openAddTransactionDialog() {
-    final titleController = TextEditingController();
-    final amountController = TextEditingController();
-    String selectedCat = categories[0];
-    bool isIncome = false;
+  void _addNewFile(String fileName) {
+    setState(() {
+      userFiles.add(
+        ExpenseFile(
+          id: DateTime.now().toString(),
+          title: fileName,
+          color: cardColors[userFiles.length % cardColors.length],
+        ),
+      );
+    });
+  }
 
+  void _deleteFile(int index) {
+    setState(() {
+      userFiles.removeAt(index);
+    });
+  }
+
+  void _showAddFileDialog() {
+    final titleController = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text(widget.language == 'BN' ? 'নতুন হিসাব (ফাইল) যুক্ত করুন' : 'Add New Record'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: titleController,
-                      decoration: InputDecoration(
-                        labelText: widget.language == 'BN' ? 'বিবরণ (যেমন: চাল কেনা)' : 'Title',
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: amountController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: '${widget.language == 'BN' ? 'টাকার পরিমাণ' : 'Amount'} (${widget.currency})',
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      widget.language == 'BN' ? 'ফাইল/ক্যাটাগরি বাছুন:' : 'Select Category:',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    DropdownButton<String>(
-                      isExpanded: true,
-                      value: selectedCat,
-                      items: categories.map((String cat) {
-                        return DropdownMenuItem<String>(
-                          value: cat,
-                          child: Text(cat),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(() => selectedCat = val);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        ChoiceChip(
-                          label: Text(widget.language == 'BN' ? 'খরচ' : 'Expense'),
-                          selected: !isIncome,
-                          selectedColor: Colors.red.shade100,
-                          onSelected: (selected) {
-                            if (selected) setDialogState(() => isIncome = false);
-                          },
-                        ),
-                        const SizedBox(width: 10),
-                        ChoiceChip(
-                          label: Text(widget.language == 'BN' ? 'আয়' : 'Income'),
-                          selected: isIncome,
-                          selectedColor: Colors.green.shade100,
-                          onSelected: (selected) {
-                            if (selected) setDialogState(() => isIncome = true);
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'নতুন ফাইল তৈরি করুন',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'আপনার ফাইলের নাম লিখুন (যেমন: বাজার খরচ, বাড়ির খরচ, দোকান খরচ):',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: titleController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'ফাইলের নাম লিখুন...',
+                border: OutlineInputBorder(),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text(widget.language == 'BN' ? 'বাতিল' : 'Cancel'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-                  onPressed: () {
-                    final title = titleController.text.trim();
-                    final amt = double.tryParse(amountController.text.trim()) ?? 0.0;
-
-                    if (title.isNotEmpty && amt > 0) {
-                      setState(() {
-                        if (isIncome) {
-                          totalIncome += amt;
-                        } else {
-                          totalExpense += amt;
-                        }
-                        transactions.insert(0, {
-                          'title': title,
-                          'category': selectedCat,
-                          'date': DateTime.now().toString().split(' ')[0],
-                          'amount': amt,
-                          'isIncome': isIncome
-                        });
-                      });
-                      Navigator.pop(ctx);
-                    }
-                  },
-                  child: Text(widget.language == 'BN' ? 'সেভ করুন' : 'Save', style: const TextStyle(color: Colors.white)),
-                ),
-              ],
-            );
-          },
-        );
-      },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('বাতিল'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (titleController.text.trim().isNotEmpty) {
+                _addNewFile(titleController.text.trim());
+                Navigator.pop(ctx);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.teal.shade700,
+            ),
+            child: const Text('তৈরি করুন', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool isBN = widget.language == 'BN';
-    final double netBalance = totalIncome - totalExpense;
+    return Scaffold(
+      backgroundColor: Colors.grey.shade100,
+      appBar: AppBar(
+        title: const Text(
+          'আমার হিসাব ফাইলসমূহ',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        backgroundColor: Colors.teal.shade700,
+        centerTitle: true,
+        elevation: 2,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.teal.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.teal.shade200),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.create_new_folder, color: Colors.teal, size: 30),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'নিচের "+ নতুন ফাইল তৈরি করুন" বাটনে চাপ দিয়ে আপনার ইচ্ছেমতো ফাইল বানান।',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.teal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'আপনার তৈরি ফাইলসমূহ:',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  'মোট: ${userFiles.length}টি',
+                  style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: userFiles.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.folder_open_rounded,
+                            size: 80,
+                            color: Colors.grey.shade400,
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'এখনো কোনো ফাইল তৈরি করা হয়নি!\nনিচের বাটন চেপে নতুন ফাইল তৈরি করুন।',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    )
+                  : GridView.builder(
+                      itemCount: userFiles.length,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                        childAspectRatio: 1.0,
+                      ),
+                      itemBuilder: (context, index) {
+                        final file = userFiles[index];
+                        return InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => FileDetailScreen(file: file),
+                              ),
+                            ).then((_) => setState(() {}));
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                              border: Border.all(
+                                color: file.color.withOpacity(0.3),
+                                width: 1.5,
+                              ),
+                            ),
+                            padding: const EdgeInsets.all(12),
+                            child: Stack(
+                              children: [
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 26,
+                                      backgroundColor: file.color.withOpacity(0.15),
+                                      child: Icon(
+                                        Icons.folder_rounded,
+                                        color: file.color,
+                                        size: 30,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      file.title,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey.shade800,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'খরচ: ৳${file.totalExpense.toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.red.shade600,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Positioned(
+                                  top: 0,
+                                  right: 0,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: const Text('ফাইল ডিলিট করবেন?'),
+                                          content: Text('আপনি কি সত্যিই "${file.title}" ফাইলটি মুছে ফেলতে চান?'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(ctx),
+                                              child: const Text('না'),
+                                            ),
+                                            ElevatedButton(
+                                              onPressed: () {
+                                                _deleteFile(index);
+                                                Navigator.pop(ctx);
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.red,
+                                              ),
+                                              child: const Text('হ্যাঁ', style: TextStyle(color: Colors.white)),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddFileDialog,
+        backgroundColor: Colors.teal.shade700,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          'নতুন ফাইল তৈরি করুন',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+}
 
-    // ফিল্টার অনুযায়ী তালিকা তৈরি
-    final filteredTransactions = selectedCategoryFilter == 'সব'
-        ? transactions
-        : transactions.where((t) => t['category'] == selectedCategoryFilter).toList();
+// ফাইলের ভেতরে ঢুকে হিসাব যুক্ত করার স্ক্রিন
+class FileDetailScreen extends StatefulWidget {
+  final ExpenseFile file;
 
+  const FileDetailScreen({super.key, required this.file});
+
+  @override
+  State<FileDetailScreen> createState() => _FileDetailScreenState();
+}
+
+class _FileDetailScreenState extends State<FileDetailScreen> {
+  final _titleController = TextEditingController();
+  final _amountController = TextEditingController();
+  bool _isExpense = true;
+
+  void _addTransaction() {
+    final title = _titleController.text.trim();
+    final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+
+    if (title.isNotEmpty && amount > 0) {
+      setState(() {
+        widget.file.transactions.add(
+          TransactionModel(
+            title: title,
+            amount: amount,
+            isExpense: _isExpense,
+            date: DateTime.now(),
+          ),
+        );
+      });
+      _titleController.clear();
+      _amountController.clear();
+      Navigator.pop(context);
+    }
+  }
+
+  void _showAddTransactionSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            top: 20,
+            left: 20,
+            right: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'হিসাব যোগ করুন (${widget.file.title})',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Center(child: Text('খরচ (-)')),
+                      selected: _isExpense,
+                      selectedColor: Colors.red.shade100,
+                      onSelected: (val) {
+                        setSheetState(() => _isExpense = true);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Center(child: Text('জমা (+)')),
+                      selected: !_isExpense,
+                      selectedColor: Colors.green.shade100,
+                      onSelected: (val) {
+                        setSheetState(() => _isExpense = false);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: 'বিবরণ (যেমন: চাল কেনা / বেতন)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'টাকার পরিমাণ (৳)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _addTransaction,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: widget.file.color,
+                  ),
+                  child: const Text(
+                    'সংরক্ষণ করুন',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Smart Hisab', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.teal,
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.cloud_upload, color: Colors.white),
-            tooltip: 'Cloud Sync',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(isBN ? 'Firebase ক্লাউডে ডাটা ব্যাকআপ সফল হয়েছে!' : 'Data synced to Cloud!'),
-                  backgroundColor: Colors.teal,
-                ),
-              );
-            },
-          )
-        ],
+        title: Text(widget.file.title, style: const TextStyle(color: Colors.white)),
+        backgroundColor: widget.file.color,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Column(
         children: [
-          // AdMob এড ব্যানার সিমুলেশন
+          // সামারি কার্ড
           Container(
-            color: Colors.amber.shade100,
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: const Text(
-              'AdMob Advertisement Banner',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.bold),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
+            padding: const EdgeInsets.all(20),
+            color: widget.file.color.withOpacity(0.08),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                // মূল ব্যালেন্স কার্ড
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  color: Colors.teal.shade50,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Text(isBN ? 'মোট ব্যালেন্স' : 'Total Balance', style: const TextStyle(fontSize: 16, color: Colors.grey)),
-                        const SizedBox(height: 5),
-                        Text(
-                          '${widget.currency} ${netBalance.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.teal),
-                        ),
-                        const Divider(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            Column(
-                              children: [
-                                Text(isBN ? 'মোট আয়' : 'Total Income', style: const TextStyle(color: Colors.grey)),
-                                Text('${widget.currency} ${totalIncome.toStringAsFixed(2)}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            Column(
-                              children: [
-                                Text(isBN ? 'মোট খরচ' : 'Total Expense', style: const TextStyle(color: Colors.grey)),
-                                Text('${widget.currency} ${totalExpense.toStringAsFixed(2)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ],
-                        )
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                // ফাইল/ক্যাটাগরি ফিল্টার ড্রপডাউন
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Column(
                   children: [
+                    const Text('মোট জমা', style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 4),
                     Text(
-                      isBN ? 'ফাইল ফিল্টার:' : 'Filter File:',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      '৳${widget.file.totalIncome.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
                     ),
-                    DropdownButton<String>(
-                      value: selectedCategoryFilter,
-                      items: ['সব', ...categories].map((String cat) {
-                        return DropdownMenuItem<String>(
-                          value: cat,
-                          child: Text(cat, style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            selectedCategoryFilter = val;
-                          });
-                        }
-                      },
+                  ],
+                ),
+                Container(height: 30, width: 1, color: Colors.grey.shade400),
+                Column(
+                  children: [
+                    const Text('মোট খরচ', style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 4),
+                    Text(
+                      '৳${widget.file.totalExpense.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          // হিসাবের তালিকা
+          const Divider(height: 1),
+
+          // ট্রানজেকশন লিস্ট
           Expanded(
-            child: filteredTransactions.isEmpty
-                ? Center(child: Text(isBN ? 'কোন হিসাবের ফাইল পাওয়া যায়নি' : 'No record found'))
+            child: widget.file.transactions.isEmpty
+                ? const Center(
+                    child: Text(
+                      'এখনো কোনো হিসাব যোগ করা হয়নি।\nনিচের + বাটনে চাপ দিয়ে যোগ করুন।',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 15),
+                    ),
+                  )
                 : ListView.builder(
-                    itemCount: filteredTransactions.length,
+                    itemCount: widget.file.transactions.length,
                     itemBuilder: (context, index) {
-                      final item = filteredTransactions[index];
-                      final bool isInc = item['isIncome'];
+                      final item = widget.file.transactions[index];
                       return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: isInc ? Colors.green.shade100 : Colors.red.shade100,
+                            backgroundColor: item.isExpense
+                                ? Colors.red.shade50
+                                : Colors.green.shade50,
                             child: Icon(
-                              isInc ? Icons.arrow_downward : Icons.arrow_upward,
-                              color: isInc ? Colors.green : Colors.red,
+                              item.isExpense
+                                  ? Icons.arrow_downward
+                                  : Icons.arrow_upward,
+                              color: item.isExpense ? Colors.red : Colors.green,
                             ),
                           ),
-                          title: Text(item['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('${item['category']} • ${item['date']}'),
+                          title: Text(
+                            item.title,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            '${item.date.day}/${item.date.month}/${item.date.year}',
+                          ),
                           trailing: Text(
-                            '${isInc ? '+' : '-'} ${widget.currency}${item['amount']}',
+                            '${item.isExpense ? '-' : '+'} ৳${item.amount.toStringAsFixed(0)}',
                             style: TextStyle(
-                              color: isInc ? Colors.green : Colors.red,
-                              fontWeight: FontWeight.bold,
                               fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: item.isExpense ? Colors.red : Colors.green,
                             ),
                           ),
                         ),
@@ -423,314 +590,17 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.teal,
-        onPressed: _openAddTransactionDialog,
-        child: const Icon(Icons.add, color: Colors.white, size: 30),
+        onPressed: _showAddTransactionSheet,
+        backgroundColor: widget.file.color,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 }
+```eof
 
-// ================= ২. ভয়েস ও ডকুমেন্ট স্ক্যানার স্ক্রিন =================
-class VoiceScanScreen extends StatelessWidget {
-  final String language;
-
-  const VoiceScanScreen({super.key, required this.language});
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isBN = language == 'BN';
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isBN ? 'ভয়েস ও মেমো স্ক্যানার' : 'Voice & Doc Scanner', style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.teal,
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 55),
-                  backgroundColor: Colors.teal,
-                ),
-                onPressed: () {
-                  showModalBottomSheet(
-                    context: context,
-                    builder: (ctx) => Container(
-                      padding: const EdgeInsets.all(20),
-                      height: 220,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.mic, size: 60, color: Colors.teal),
-                          const SizedBox(height: 10),
-                          Text(
-                            isBN ? 'মুখে বলুন (যেমন: "বাজারের খরচ ৫০০ টাকা")' : 'Speak Now (e.g. "Grocery 500")',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.mic, color: Colors.white, size: 28),
-                label: Text(isBN ? 'ভয়েস ইনপুট (মুখে বলুন)' : 'Voice Input', style: const TextStyle(color: Colors.white, fontSize: 18)),
-              ),
-              const SizedBox(height: 25),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 55),
-                  backgroundColor: Colors.orange,
-                ),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(isBN ? 'ক্যামেরা স্ক্যানার অন হচ্ছে... মেমো/রসিদ স্ক্যান করুন' : 'Opening Camera Doc Scanner...'),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.camera_alt, color: Colors.white, size: 28),
-                label: Text(isBN ? 'ডকুমেন্ট/মেমো স্ক্যান করুন' : 'Scan Doc / Receipt', style: const TextStyle(color: Colors.white, fontSize: 18)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ================= ৩. VIP সাবস্ক্রিপশন স্ক্রিন =================
-class VipSubscriptionScreen extends StatefulWidget {
-  final String currency;
-  final String language;
-
-  const VipSubscriptionScreen({super.key, required this.currency, required this.language});
-
-  @override
-  State<VipSubscriptionScreen> createState() => _VipSubscriptionScreenState();
-}
-
-class _VipSubscriptionScreenState extends State<VipSubscriptionScreen> {
-  bool isVipActive = false;
-
-  void _showPaymentModal(String plan, String amount) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('$plan ${widget.language == 'BN' ? 'কিনুন' : 'Purchase'}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${widget.language == 'BN' ? 'টাকার পরিমাণ' : 'Amount'}: ${widget.currency}$amount',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal),
-              ),
-              const SizedBox(height: 15),
-              Text(widget.language == 'BN' ? 'পেমেন্ট মাধ্যম বাছুন:' : 'Select Payment Method:'),
-              const SizedBox(height: 10),
-              ListTile(
-                leading: const Icon(Icons.account_balance_wallet, color: Colors.pink),
-                title: const Text('bKash / Nagad'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _activateVip(plan);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.credit_card, color: Colors.blue),
-                title: const Text('Card / UPI Payment'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _activateVip(plan);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(widget.language == 'BN' ? 'বাতিল' : 'Cancel'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _activateVip(String plan) {
-    setState(() {
-      isVipActive = true;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(widget.language == 'BN' ? '$plan একটিভ হয়েছে! আপনি এখন VIP মেম্বার।' : 'VIP Plan Activated Successfully!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isBN = widget.language == 'BN';
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isBN ? 'VIP মেম্বারশিপ প্ল্যান' : 'VIP Membership', style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.teal,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            Icon(
-              Icons.stars_rounded,
-              size: 80,
-              color: isVipActive ? Colors.amber : Colors.grey,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              isVipActive
-                  ? (isBN ? 'আপনি একজন VIP সদস্য!' : 'You are a VIP Member!')
-                  : (isBN ? 'VIP মেম্বারশিপে আপগ্রেড করুন' : 'Upgrade to VIP'),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 25),
-            Card(
-              child: ListTile(
-                title: Text(isBN ? 'মাসিক VIP প্ল্যান' : 'Monthly VIP'),
-                subtitle: Text(isBN ? 'বিজ্ঞাপন মুক্ত ও অনলিমিটেড ব্যাকআপ' : 'Ad-free & Unlimited Backup'),
-                trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-                  onPressed: () => _showPaymentModal('মাসিক প্ল্যান', '৩০'),
-                  child: Text('${widget.currency} ৩০ / মাস', style: const TextStyle(color: Colors.white)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Card(
-              child: ListTile(
-                title: Text(isBN ? 'বার্ষিক VIP প্ল্যান' : 'Yearly VIP'),
-                subtitle: Text(isBN ? '১ বছরের ফুল সার্ভিস (সেরা ডিল)' : '1 Year Full Access (Best Deal)'),
-                trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-                  onPressed: () => _showPaymentModal('বার্ষিক প্ল্যান', '৩০০'),
-                  child: Text('${widget.currency} ৩০০ / বছর', style: const TextStyle(color: Colors.white)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ================= ৪. সেটিংস স্ক্রিন (ভাষা, কারেন্সি, সিকিউরিটি ও টাইম নোটিফিকেশন) =================
-class SettingsScreen extends StatefulWidget {
-  final String language;
-  final String currency;
-  final Function(String) onLangChange;
-  final Function(String) onCurrChange;
-
-  const SettingsScreen({
-    super.key,
-    required this.language,
-    required this.currency,
-    required this.onLangChange,
-    required this.onCurrChange,
-  });
-
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool isBiometricEnabled = true;
-  bool isNotificationEnabled = true;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isBN = widget.language == 'BN';
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isBN ? 'সেটিংস ও সুরক্ষার পয়েন্ট' : 'Settings & Security', style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.teal,
-      ),
-      body: ListView(
-        children: [
-          // Multi-Lang
-          ListTile(
-            leading: const Icon(Icons.language, color: Colors.teal),
-            title: Text(isBN ? 'ভাষা বাছুন (Language)' : 'Select Language'),
-            subtitle: Text(widget.language == 'BN' ? 'বাংলা' : 'English'),
-            trailing: DropdownButton<String>(
-              value: widget.language,
-              items: const [
-                DropdownMenuItem(value: 'BN', child: Text('বাংলা')),
-                DropdownMenuItem(value: 'EN', child: Text('English')),
-              ],
-              onChanged: (val) {
-                if (val != null) widget.onLangChange(val);
-              },
-            ),
-          ),
-          const Divider(),
-          // Multi-Currency
-          ListTile(
-            leading: const Icon(Icons.monetization_on, color: Colors.teal),
-            title: Text(isBN ? 'মুদ্রা সিলেক্ট (Currency)' : 'Select Currency'),
-            subtitle: Text(widget.currency),
-            trailing: DropdownButton<String>(
-              value: widget.currency,
-              items: const [
-                DropdownMenuItem(value: '৳', child: Text('৳ (টাকা)')),
-                DropdownMenuItem(value: '₹', child: Text('₹ (রুপি)')),
-                DropdownMenuItem(value: '\$', child: Text('\$ (ডলার)')),
-              ],
-              onChanged: (val) {
-                if (val != null) widget.onCurrChange(val);
-              },
-            ),
-          ),
-          const Divider(),
-          // Security
-          SwitchListTile(
-            secondary: const Icon(Icons.fingerprint, color: Colors.teal),
-            title: Text(isBN ? 'সিকিউরিটি (ফিঙ্গারপ্রিন্ট & ফেস লক)' : 'Security (Biometric Lock)'),
-            subtitle: Text(isBN ? 'অ্যাপ ওপেন করার সময় বায়োমেট্রিক চাওয়া হবে' : 'Require Fingerprint/Face ID'),
-            value: isBiometricEnabled,
-            onChanged: (val) {
-              setState(() => isBiometricEnabled = val);
-            },
-          ),
-          const Divider(),
-          // Global Time Notification & Alarm
-          SwitchListTile(
-            secondary: const Icon(Icons.alarm_on, color: Colors.teal),
-            title: Text(isBN ? 'গ্লোবাল টাইম অ্যালার্ম ও নোটিফিকেশন' : 'Global Alarm & Notification'),
-            subtitle: Text(isBN ? 'প্রতিদিন রাত ৯টায় হিসাব দেওয়ার রিমাইন্ডার' : 'Daily Reminder at 9:00 PM'),
-            value: isNotificationEnabled,
-            onChanged: (val) {
-              setState(() => isNotificationEnabled = val);
-            },
-          ),
-          const Divider(),
-          // Offline Database Status
-          ListTile(
-            leading: const Icon(Icons.storage, color: Colors.teal),
-            title: Text(isBN ? 'অফলাইন ডাটাবেজ (Hive Storage)' : 'Offline Storage'),
-            subtitle: Text(isBN ? 'অফলাইনে সব ডাটা ফাস্ট সেভ থাকবে' : 'Data stored locally'),
-            trailing: const Icon(Icons.check_circle, color: Colors.green),
-          ),
-        ],
-      ),
-    );
-  }
-}
+### অ্যাপে কী পরিবর্তন করা হয়েছে:
+১. **ইউজারদের স্বাধীনতা:** অ্যাপ ওপেন করলে তারা একদম পরিষ্কার ইন্টারফেস দেখবে। নিচে একটি **"+ নতুন ফাইল তৈরি করুন"** বাটন থাকবে।  
+২. **পছন্দমতো ফাইলের নাম:** প্লাস বাটনে চাপ দিলে একটি পপআপ আসবে যেখানে ইউজার তার ইচ্ছামতো নাম (যেমন: *বাজার খরচ*, *ঘরের কাজ*, *দোকান*, ইত্যাদি) দিয়ে ফাইল বানিয়ে নিতে পারবে।  
+৩. **ফাইল ম্যানেজমেন্ট:** প্রতিটি ফাইলের সাথে ডিলিট (Trash/Delete) অপশন রাখা হয়েছে, যাতে কোনো ফাইল ভুল করে বানানো হলে সেটা মুছে ফেলা যায়।  
+৪. **ফায়ারের ভেতরে জমা-খরচ:** ফাইল বানিয়ে সেটার ওপর চাপ দিলে তার ভেতরে ঢুকে স্বাধীনভাবে জমা বা খরচের হিসাব রাখা যাবে।
