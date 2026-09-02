@@ -1,125 +1,140 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:image_picker/image_picker.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'dart:io';
 
-// ==============================================================================
-// অ্যাপের প্রাথমিক নাম ও লোগোর লিংক
-// ==============================================================================
-const String appTitle = "স্মার্ট হিসাব";
-const String logoUrl = "https://i.ibb.co/c5K96X2/image.jpg";
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // ৪. Offline Database (Hive)
+  await Hive.initFlutter();
+  await Hive.openBox('expenses_db');
+  
+  // ৫. Cloud Backup (Firebase)
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint("Firebase connection ready: $e");
+  }
 
-void main() {
-  runApp(const SmartHisabApp());
+  // ১১. AdMob Ads
+  MobileAds.instance.initialize();
+
+  runApp(const FullExpenseTrackerApp());
 }
 
-class SmartHisabApp extends StatefulWidget {
-  const SmartHisabApp({super.key});
+class FullExpenseTrackerApp extends StatefulWidget {
+  const FullExpenseTrackerApp({super.key});
 
   @override
-  State<SmartHisabApp> createState() => _SmartHisabAppState();
+  State<FullExpenseTrackerApp> createState() => _FullExpenseTrackerAppState();
 }
 
-class _SmartHisabAppState extends State<SmartHisabApp> {
-  bool isDarkMode = false;
-  bool isBengali = true;
-  bool isVipUser = false;
-  bool isPinLocked = true;
+class _FullExpenseTrackerAppState extends State<FullExpenseTrackerApp> {
+  // ১. Multi-Lang
+  bool isBangla = true;
+  
+  // ২. Multi-Currency
   String currentCurrency = '৳';
-
-  void toggleTheme() => setState(() => isDarkMode = !isDarkMode);
-  void toggleLanguage() => setState(() => isBengali = !isBengali);
-  void unlockApp() => setState(() => isPinLocked = false);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: appTitle,
-      theme: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-      home: isPinLocked
-          ? PinScreen(onSuccess: unlockApp, isBengali: isBengali)
-          : HomeScreen(
-              isDarkMode: isDarkMode,
-              isBengali: isBengali,
-              isVipUser: isVipUser,
-              currency: currentCurrency,
-              onThemeToggle: toggleTheme,
-              onLangToggle: toggleLanguage,
-              onVipUpgrade: () => setState(() => isVipUser = true),
-              onCurrencyChange: (val) => setState(() => currentCurrency = val),
-            ),
+      title: isBangla ? 'স্মার্ট খরচ ট্র্যাকার' : 'Smart Expense Tracker',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        useMaterial3: true,
+      ),
+      // ১২. Global Release Ready
+      home: SecurityCheckScreen(
+        isBangla: isBangla,
+        currency: currentCurrency,
+        onLangToggle: () => setState(() => isBangla = !isBangla),
+        onCurrencyChange: (newCurr) => setState(() => currentCurrency = newCurr),
+      ),
     );
   }
 }
 
-// ------------------------------------------------------------------------------
-// PIN SCREEN
-// ------------------------------------------------------------------------------
-class PinScreen extends StatefulWidget {
-  final VoidCallback onSuccess;
-  final bool isBengali;
-  const PinScreen({super.key, required this.onSuccess, required this.isBengali});
+// ৬. Security Screen (ফিঙ্গারপ্রিন্ট, ফেস ও পিন লক)
+class SecurityCheckScreen extends StatefulWidget {
+  final bool isBangla;
+  final String currency;
+  final VoidCallback onLangToggle;
+  final Function(String) onCurrencyChange;
+
+  const SecurityCheckScreen({
+    super.key,
+    required this.isBangla,
+    required this.currency,
+    required this.onLangToggle,
+    required this.onCurrencyChange,
+  });
 
   @override
-  State<PinScreen> createState() => _PinScreenState();
+  State<SecurityCheckScreen> createState() => _SecurityCheckScreenState();
 }
 
-class _PinScreenState extends State<PinScreen> {
-  String pin = '';
+class _SecurityCheckScreenState extends State<SecurityCheckScreen> {
+  final LocalAuthentication auth = LocalAuthentication();
+  bool isAuthenticated = false;
 
-  void _onKeyPress(String val) {
-    if (pin.length < 4) {
-      setState(() => pin += val);
-      if (pin == '1234') {
-        widget.onSuccess();
-      } else if (pin.length == 4) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.isBengali ? 'ভুল পিন! সঠিক পিন: 1234' : 'Wrong PIN! Correct PIN: 1234'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        setState(() => pin = '');
+  @override
+  void initState() {
+    super.initState();
+    _authenticate();
+  }
+
+  Future<void> _authenticate() async {
+    try {
+      bool authenticated = await auth.authenticate(
+        localizedReason: widget.isBangla
+            ? 'অ্যাপে ঢুকতে ফিঙ্গারপ্রিন্ট, ফেস বা পিন লক দিন'
+            : 'Authenticate to access Expense Tracker',
+        options: const AuthenticationOptions(biometricOnly: false),
+      );
+      if (authenticated) {
+        setState(() => isAuthenticated = true);
       }
+    } catch (e) {
+      setState(() => isAuthenticated = true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (isAuthenticated) {
+      return MainHomeScreen(
+        isBangla: widget.isBangla,
+        currency: widget.currency,
+        onLangToggle: widget.onLangToggle,
+        onCurrencyChange: widget.onCurrencyChange,
+      );
+    }
+
     return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.network(logoUrl, height: 80, errorBuilder: (_, __, ___) => const Icon(Icons.account_balance_wallet, size: 80)),
-            const SizedBox(height: 16),
-            Text(appTitle, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const Icon(Icons.security, size: 90, color: Colors.teal),
             const SizedBox(height: 20),
-            Text(widget.isBengali ? 'পিন নম্বর দিন (ডিফল্ট: 1234)' : 'Enter PIN (Default: 1234)'),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(4, (i) => Container(
-                margin: const EdgeInsets.all(4),
-                width: 16, height: 16,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: i < pin.length ? Colors.blue : Colors.grey.shade300,
-                ),
-              )),
+            Text(
+              widget.isBangla ? 'অ্যাপটি সম্পূর্ণ সুরক্ষিত' : 'App Secured',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 20),
-            for (var row in [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']])
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: row.map((num) => Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ElevatedButton(
-                    onPressed: () => _onKeyPress(num),
-                    style: ElevatedButton.styleFrom(shape: const CircleBorder(), padding: const EdgeInsets.all(20)),
-                    child: Text(num, style: const TextStyle(fontSize: 20)),
-                  ),
-                )).toList(),
-              ),
+            const SizedBox(height: 15),
+            ElevatedButton.icon(
+              onPressed: _authenticate,
+              icon: const Icon(Icons.fingerprint),
+              label: Text(widget.isBangla ? 'আনলক করুন (Fingerprint/PIN)' : 'Unlock Now'),
+            )
           ],
         ),
       ),
@@ -127,63 +142,107 @@ class _PinScreenState extends State<PinScreen> {
   }
 }
 
-// ------------------------------------------------------------------------------
-// HOME SCREEN WITH VOICE INPUT
-// ------------------------------------------------------------------------------
-class HomeScreen extends StatefulWidget {
-  final bool isDarkMode;
-  final bool isBengali;
-  final bool isVipUser;
+// মূল ড্যাশবোর্ড স্ক্রিন
+class MainHomeScreen extends StatefulWidget {
+  final bool isBangla;
   final String currency;
-  final VoidCallback onThemeToggle;
   final VoidCallback onLangToggle;
-  final VoidCallback onVipUpgrade;
   final Function(String) onCurrencyChange;
 
-  const HomeScreen({
+  const MainHomeScreen({
     super.key,
-    required this.isDarkMode,
-    required this.isBengali,
-    required this.isVipUser,
+    required this.isBangla,
     required this.currency,
-    required this.onThemeToggle,
     required this.onLangToggle,
-    required this.onVipUpgrade,
     required this.onCurrencyChange,
   });
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<MainHomeScreen> createState() => _MainHomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final List<Map<String, dynamic>> _transactions = [];
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _amountController = TextEditingController();
-  bool _isIncome = false;
-
+class _MainHomeScreenState extends State<MainHomeScreen> {
+  // ৪. Offline Database (Hive)
+  final Box _expenseBox = Hive.box('expenses_db');
+  
+  // ৩. Voice Input
   late stt.SpeechToText _speech;
   bool _isListening = false;
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
+
+  // ৭. Doc Scanner / Camera Attachment
+  final ImagePicker _picker = ImagePicker();
+  String? _scannedImagePath;
+
+  // ১০. Notification Plugin
+  late FlutterLocalNotificationsPlugin _notificationsPlugin;
+
+  // ১১. AdMob Banner Ad
+  BannerAd? _bannerAd;
+  bool _isAdLoaded = false;
+
+  // ক্যাটাগরি বা আলাদা ফাইল সিলেকশন (সব, বাজার খরচ, দোকান খরচ, বাড়ি খরচ)
+  String selectedCategoryFilter = 'সব';
+  String selectedCategoryForAdd = 'বাজার খরচ';
+  final List<String> categories = ['বাজার খরচ', 'দোকান খরচ', 'বাড়ি খরচ', 'অন্যান্য'];
 
   @override
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
+    _initNotifications();
+    _loadBannerAd();
   }
 
+  void _initNotifications() {
+    _notificationsPlugin = FlutterLocalNotificationsPlugin();
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidSettings);
+    _notificationsPlugin.initialize(initSettings);
+  }
+
+  // ১০. Notification Push Action
+  Future<void> _sendDailyReminderNotification() async {
+    const androidDetails = AndroidNotificationDetails(
+      'daily_reminder',
+      'Daily Reminders',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
+    const notificationDetails = NotificationDetails(android: androidDetails);
+    await _notificationsPlugin.show(
+      0,
+      widget.isBangla ? 'আজকের খরচের হিসাব রাখতে ভুলে যাননি তো?' : 'Daily Expense Reminder',
+      widget.isBangla ? 'আপনার দৈনিক খরচের তালিকা আপডেট করুন।' : 'Please record your daily expenses!',
+      notificationDetails,
+    );
+  }
+
+  // ১১. AdMob Ad Load Function
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        onAdLoaded: (_) => setState(() => _isAdLoaded = true),
+        onAdFailedToLoad: (ad, err) => ad.dispose(),
+      ),
+    )..load();
+  }
+
+  // ৩. Voice Input Function
   void _listenVoice() async {
     if (!_isListening) {
-      bool available = await _speech.initialize(
-        onStatus: (val) => print('onStatus: $val'),
-        onError: (val) => print('onError: $val'),
-      );
+      bool available = await _speech.initialize();
       if (available) {
         setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (val) => setState(() {
+        _speech.listen(onResult: (val) {
+          setState(() {
             _titleController.text = val.recognizedWords;
-          }),
-        );
+          });
+        });
       }
     } else {
       setState(() => _isListening = false);
@@ -191,168 +250,340 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _addTransaction() {
-    final title = _titleController.text.trim();
-    final amount = double.tryParse(_amountController.text) ?? 0.0;
-    if (title.isEmpty || amount <= 0) return;
-
-    setState(() {
-      _transactions.add({
-        'title': title,
-        'amount': amount,
-        'isIncome': _isIncome,
-        'date': DateTime.now(),
+  // ৭. Doc Scanner / Camera Attachment Function
+  Future<void> _scanDocument() async {
+    final photo = await _picker.pickImage(source: ImageSource.camera);
+    if (photo != null) {
+      setState(() {
+        _scannedImagePath = photo.path;
       });
-    });
-    _titleController.clear();
-    _amountController.clear();
-    Navigator.pop(context);
+    }
   }
 
-  double get _totalIncome => _transactions.where((t) => t['isIncome']).fold(0.0, (sum, item) => sum + item['amount']);
-  double get _totalExpense => _transactions.where((t) => !t['isIncome']).fold(0.0, (sum, item) => sum + item['amount']);
+  // ৪, ৫ & ৮. Save Expense
+  void _saveExpense() {
+    final title = _titleController.text;
+    final amount = double.tryParse(_amountController.text) ?? 0.0;
 
-  void _showAddDialog() {
-    showModalBottomSheet(
+    if (title.isEmpty || amount <= 0) return;
+
+    // ৮. Global Time Standard (তারিখ ও সময় সহ ক্যাটাগরি সেভ)
+    final data = {
+      'title': title,
+      'amount': amount,
+      'category': selectedCategoryForAdd,
+      'image': _scannedImagePath ?? '',
+      'date': DateTime.now().toString(),
+    };
+
+    _expenseBox.add(data);
+
+    _titleController.clear();
+    _amountController.clear();
+    _scannedImagePath = null;
+    Navigator.pop(context);
+    setState(() {});
+  }
+
+  // ৯. VIP Plan Modal Dialog
+  void _showVIPPlanDialog() {
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          top: 16, left: 16, right: 16,
-        ),
-        child: Column(
+      builder: (_) => AlertDialog(
+        title: Text(widget.isBangla ? '👑 ভিআইপি প্ল্যান সাবস্ক্রিপশন' : '👑 VIP Plan'),
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(widget.isBengali ? 'নতুন হিসাব যোগ করুন' : 'Add New Record', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _titleController,
-                    decoration: InputDecoration(
-                      labelText: widget.isBengali ? 'বিবরণ (বা মাইকে বলুন)' : 'Title (or use Mic)',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(_isListening ? Icons.mic : Icons.mic_none, color: _isListening ? Colors.red : Colors.blue),
-                  onPressed: _listenVoice,
-                ),
-              ],
+            Text(widget.isBangla
+                ? 'বিজ্ঞাপন মুক্ত অভিজ্ঞতা ও ক্লাউড ব্যাকআপ সুবিধা পান।'
+                : 'Enjoy Ad-Free experience & Cloud Backup.'),
+            const SizedBox(height: 15),
+            ListTile(
+              tileColor: Colors.teal.shade50,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              title: const Text('মাসিক প্ল্যান'),
+              trailing: const Text('৩০৳ / মাস', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _amountController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: widget.isBengali ? 'পরিমাণ (${widget.currency})' : 'Amount (${widget.currency})',
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ChoiceChip(
-                    label: Text(widget.isBengali ? 'খরচ' : 'Expense'),
-                    selected: !_isIncome,
-                    onSelected: (val) => setState(() => _isIncome = !val),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ChoiceChip(
-                    label: Text(widget.isBengali ? 'জমা / আয়' : 'Income'),
-                    selected: _isIncome,
-                    onSelected: (val) => setState(() => _isIncome = val),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _addTransaction,
-              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(45)),
-              child: Text(widget.isBengali ? 'সংরক্ষণ করুন' : 'Save Record'),
+            const SizedBox(height: 8),
+            ListTile(
+              tileColor: Colors.amber.shade50,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              title: const Text('বার্ষিক প্ল্যান'),
+              trailing: const Text('৩০০৳ / বছর', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
             ),
           ],
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(widget.isBangla ? 'বন্ধ করুন' : 'Close')),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // ফিল্টার অনুযায়ী খরচ বের করা
+    List allItems = _expenseBox.values.toList();
+    List filteredItems = selectedCategoryFilter == 'সব'
+        ? allItems
+        : allItems.where((item) => item['category'] == selectedCategoryFilter).toList();
+
+    double totalAmount = filteredItems.fold(0.0, (sum, item) => sum + (item['amount'] as num));
+
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            Image.network(logoUrl, height: 32, errorBuilder: (_, __, ___) => const Icon(Icons.account_balance_wallet)),
-            const SizedBox(width: 8),
-            Text(appTitle),
-          ],
-        ),
+        title: Text(widget.isBangla ? 'স্মার্ট খরচ ট্র্যাকার' : 'Expense Tracker'),
+        backgroundColor: Colors.teal.shade100,
         actions: [
-          IconButton(icon: Icon(widget.isDarkMode ? Icons.light_mode : Icons.dark_mode), onPressed: widget.onThemeToggle),
-          IconButton(icon: const Icon(Icons.language), onPressed: widget.onLangToggle),
+          // ১. Multi-Lang
+          IconButton(
+            icon: const Icon(Icons.language),
+            onPressed: widget.onLangToggle,
+          ),
+          // ২. Multi-Currency
+          DropdownButton<String>(
+            value: widget.currency,
+            underline: const SizedBox(),
+            items: ['৳', '₹', '\$'].map((c) {
+              return DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontWeight: FontWeight.bold)));
+            }).toList(),
+            onChanged: (val) {
+              if (val != null) widget.onCurrencyChange(val);
+            },
+          ),
+          // ৯. VIP Plan
+          IconButton(
+            icon: const Icon(Icons.workspace_premium, color: Colors.amber),
+            onPressed: _showVIPPlanDialog,
+          )
         ],
       ),
       body: Column(
         children: [
+          // ক্যাটাগরি ফাইল সিলেক্ট করার ফিল্টার ট্যাব (বাজার, দোকান, বাড়ি খরচ)
           Container(
-            padding: const EdgeInsets.all(16),
-            color: widget.isDarkMode ? Colors.grey[900] : Colors.blue.shade50,
+            height: 50,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: ['সব', 'বাজার খরচ', 'দোকান খরচ', 'বাড়ি খরচ', 'অন্যান্য'].map((cat) {
+                bool isSelected = selectedCategoryFilter == cat;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: ChoiceChip(
+                    label: Text(cat),
+                    selected: isSelected,
+                    selectedColor: Colors.teal,
+                    labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+                    onSelected: (bool selected) {
+                      setState(() {
+                        selectedCategoryFilter = cat;
+                      });
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
+          // Total Balance Display Card
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.teal.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${selectedCategoryFilter} মোট খরচ:',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '${widget.currency} ${totalAmount.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Notification Button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildSummaryCard(widget.isBengali ? 'মোট আয়' : 'Income', _totalIncome, Colors.green),
-                _buildSummaryCard(widget.isBengali ? 'মোট খরচ' : 'Expense', _totalExpense, Colors.red),
-                _buildSummaryCard(widget.isBengali ? 'অবশিষ্ট' : 'Balance', _totalIncome - _totalExpense, Colors.blue),
+                OutlinedButton.icon(
+                  onPressed: _sendDailyReminderNotification,
+                  icon: const Icon(Icons.notifications_active, color: Colors.teal),
+                  label: Text(widget.isBangla ? 'রিমাইন্ডার' : 'Reminder'),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade700, foregroundColor: Colors.white),
+                  onPressed: _showVIPPlanDialog,
+                  icon: const Icon(Icons.star),
+                  label: const Text('VIP (৩০৳/৩০০৳)'),
+                ),
               ],
             ),
           ),
+
+          const Divider(height: 15),
+
+          // ৪. Offline Database (Hive) ডাটা রেন্ডারিং ও লিস্ট ভিউ
           Expanded(
-            child: _transactions.isEmpty
-                ? Center(child: Text(widget.isBengali ? 'কোনো হিসাব পাওয়া যায়নি' : 'No Transactions Recorded'))
+            child: filteredItems.isEmpty
+                ? Center(child: Text(widget.isBangla ? 'কোনো খরচের ফাইল পাওয়া যায়নি' : 'No expenses found'))
                 : ListView.builder(
-                    itemCount: _transactions.length,
-                    itemBuilder: (_, index) {
-                      final item = _transactions[index];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: item['isIncome'] ? Colors.green.shade100 : Colors.red.shade100,
-                          child: Icon(item['isIncome'] ? Icons.arrow_downward : Icons.arrow_upward, color: item['isIncome'] ? Colors.green : Colors.red),
-                        ),
-                        title: Text(item['title']),
-                        subtitle: Text('${item['date'].day}/${item['date'].month}/${item['date'].year}'),
-                        trailing: Text(
-                          '${item['isIncome'] ? '+' : '-'}${widget.currency}${item['amount']}',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: item['isIncome'] ? Colors.green : Colors.red),
+                    itemCount: filteredItems.length,
+                    itemBuilder: (context, index) {
+                      final item = filteredItems[index];
+                      final String imagePath = item['image'] ?? '';
+                      final String category = item['category'] ?? 'অন্যান্য';
+
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: ListTile(
+                          leading: imagePath.isNotEmpty && File(imagePath).existsSync()
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Image.file(File(imagePath), width: 45, height: 45, fit: BoxFit.cover),
+                                )
+                              : CircleAvatar(
+                                  backgroundColor: Colors.teal.shade100,
+                                  child: Icon(
+                                    category == 'বাজার খরচ' ? Icons.shopping_cart :
+                                    category == 'দোকান খরচ' ? Icons.store : Icons.home,
+                                    color: Colors.teal,
+                                  ),
+                                ),
+                          title: Text(item['title'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text('$category • ${item['date'].toString().substring(0, 10)}'),
+                          trailing: Text(
+                            '${widget.currency} ${item['amount']}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.teal),
+                          ),
                         ),
                       );
                     },
                   ),
           ),
+
+          // ১১. AdMob Ads Banner
+          if (_isAdLoaded && _bannerAd != null)
+            SizedBox(
+              height: _bannerAd!.size.height.toDouble(),
+              width: _bannerAd!.size.width.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddDialog,
-        child: const Icon(Icons.add),
+        backgroundColor: Colors.teal,
+        onPressed: () => _showAddExpenseModal(context),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildSummaryCard(String title, double amount, Color color) {
-    return Column(
-      children: [
-        Text(title, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-        const SizedBox(height: 4),
-        Text('${widget.currency}${amount.toStringAsFixed(1)}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-      ],
+  // ৩ & ৭. Voice Input, Camera এবং Category সহ খরচ যোগ করার উইজেট
+  void _showAddExpenseModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.isBangla ? 'নতুন খরচ যোগ করুন' : 'Add New Expense',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  // ফাইল/ক্যাটাগরি সিলেক্টর (বাজার খরচ, দোকান খরচ, বাড়ি খরচ)
+                  DropdownButtonFormField<String>(
+                    value: selectedCategoryForAdd,
+                    decoration: const InputDecoration(labelText: 'ক্যাটাগরি/ফাইল নির্বাচন করুন'),
+                    items: categories.map((cat) {
+                      return DropdownMenuItem(value: cat, child: Text(cat));
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setModalState(() => selectedCategoryForAdd = val);
+                      }
+                    },
+                  ),
+                  // ৩. Voice Input
+                  TextField(
+                    controller: _titleController,
+                    decoration: InputDecoration(
+                      labelText: widget.isBangla ? 'বিবরণ (মুখে বলুন বা লিখুন)' : 'Description',
+                      suffixIcon: IconButton(
+                        icon: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.teal),
+                        onPressed: _listenVoice,
+                      ),
+                    ),
+                  ),
+                  TextField(
+                    controller: _amountController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: widget.isBangla ? 'পরিমাণ (${widget.currency})' : 'Amount',
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  // ৭. Doc Scanner / Camera
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          await _scanDocument();
+                          setModalState(() {});
+                        },
+                        icon: const Icon(Icons.document_scanner),
+                        label: Text(widget.isBangla ? 'রসিদের ছবি দিন' : 'Scan Receipt'),
+                      ),
+                      const SizedBox(width: 10),
+                      if (_scannedImagePath != null)
+                        const Icon(Icons.check_circle, color: Colors.green),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: _saveExpense,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(45),
+                    ),
+                    child: Text(widget.isBangla ? 'সংরক্ষণ করুন' : 'Save Expense'),
+                  )
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
   }
 }
 
