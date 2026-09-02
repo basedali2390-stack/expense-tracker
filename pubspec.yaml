@@ -1,5 +1,5 @@
 name: expense_tracker
-description: Smart Hisab Expense Tracker App
+description: "Smart Hisab Expense Tracker App"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,26 +9,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.2
-  speech_to_text: ^7.0.0
-  image_picker: ^1.0.7
-  local_auth: ^2.1.8
-  flutter_local_notifications: ^17.0.0
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
-  firebase_core: ^2.27.0
-  permission_handler: ^11.3.1
+  cupertino_icons: ^1.0.6
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_launcher_icons: ^0.13.1
-
-flutter_launcher_icons:
-  android: "ic_launcher"
-  ios: true
-  image_path: "ic_launcher.png"
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
-
