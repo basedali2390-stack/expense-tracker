@@ -3,7 +3,6 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'dart:io';
@@ -11,19 +10,14 @@ import 'dart:io';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // ৪. Offline Database (Hive)
   await Hive.initFlutter();
   await Hive.openBox('expenses_db');
   
-  // ৫. Cloud Backup (Firebase)
   try {
     await Firebase.initializeApp();
   } catch (e) {
     debugPrint("Firebase connection ready: $e");
   }
-
-  // ১১. AdMob Ads
-  MobileAds.instance.initialize();
 
   runApp(const FullExpenseTrackerApp());
 }
@@ -36,10 +30,7 @@ class FullExpenseTrackerApp extends StatefulWidget {
 }
 
 class _FullExpenseTrackerAppState extends State<FullExpenseTrackerApp> {
-  // ১. Multi-Lang
   bool isBangla = true;
-  
-  // ২. Multi-Currency
   String currentCurrency = '৳';
 
   @override
@@ -51,7 +42,6 @@ class _FullExpenseTrackerAppState extends State<FullExpenseTrackerApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      // ১২. Global Release Ready
       home: SecurityCheckScreen(
         isBangla: isBangla,
         currency: currentCurrency,
@@ -62,7 +52,6 @@ class _FullExpenseTrackerAppState extends State<FullExpenseTrackerApp> {
   }
 }
 
-// ৬. Security Screen (ফিঙ্গারপ্রিন্ট, ফেস ও পিন লক)
 class SecurityCheckScreen extends StatefulWidget {
   final bool isBangla;
   final String currency;
@@ -142,7 +131,6 @@ class _SecurityCheckScreenState extends State<SecurityCheckScreen> {
   }
 }
 
-// মূল ড্যাশবোর্ড স্ক্রিন
 class MainHomeScreen extends StatefulWidget {
   final bool isBangla;
   final String currency;
@@ -162,27 +150,18 @@ class MainHomeScreen extends StatefulWidget {
 }
 
 class _MainHomeScreenState extends State<MainHomeScreen> {
-  // ৪. Offline Database (Hive)
   final Box _expenseBox = Hive.box('expenses_db');
   
-  // ৩. Voice Input
   late stt.SpeechToText _speech;
   bool _isListening = false;
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
 
-  // ৭. Doc Scanner / Camera Attachment
   final ImagePicker _picker = ImagePicker();
   String? _scannedImagePath;
 
-  // ১০. Notification Plugin
   late FlutterLocalNotificationsPlugin _notificationsPlugin;
 
-  // ১১. AdMob Banner Ad
-  BannerAd? _bannerAd;
-  bool _isAdLoaded = false;
-
-  // ক্যাটাগরি বা আলাদা ফাইল সিলেকশন (সব, বাজার খরচ, দোকান খরচ, বাড়ি খরচ)
   String selectedCategoryFilter = 'সব';
   String selectedCategoryForAdd = 'বাজার খরচ';
   final List<String> categories = ['বাজার খরচ', 'দোকান খরচ', 'বাড়ি খরচ', 'অন্যান্য'];
@@ -192,7 +171,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     super.initState();
     _speech = stt.SpeechToText();
     _initNotifications();
-    _loadBannerAd();
   }
 
   void _initNotifications() {
@@ -202,7 +180,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     _notificationsPlugin.initialize(initSettings);
   }
 
-  // ১০. Notification Push Action
   Future<void> _sendDailyReminderNotification() async {
     const androidDetails = AndroidNotificationDetails(
       'daily_reminder',
@@ -219,20 +196,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ১১. AdMob Ad Load Function
-  void _loadBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
-      request: const AdRequest(),
-      size: AdSize.banner,
-      listener: BannerAdListener(
-        onAdLoaded: (_) => setState(() => _isAdLoaded = true),
-        onAdFailedToLoad: (ad, err) => ad.dispose(),
-      ),
-    )..load();
-  }
-
-  // ৩. Voice Input Function
   void _listenVoice() async {
     if (!_isListening) {
       bool available = await _speech.initialize();
@@ -250,7 +213,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     }
   }
 
-  // ৭. Doc Scanner / Camera Attachment Function
   Future<void> _scanDocument() async {
     final photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null) {
@@ -260,14 +222,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     }
   }
 
-  // ৪, ৫ & ৮. Save Expense
   void _saveExpense() {
     final title = _titleController.text;
     final amount = double.tryParse(_amountController.text) ?? 0.0;
 
     if (title.isEmpty || amount <= 0) return;
 
-    // ৮. Global Time Standard (তারিখ ও সময় সহ ক্যাটাগরি সেভ)
     final data = {
       'title': title,
       'amount': amount,
@@ -285,7 +245,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     setState(() {});
   }
 
-  // ৯. VIP Plan Modal Dialog
   void _showVIPPlanDialog() {
     showDialog(
       context: context,
@@ -322,7 +281,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ফিল্টার অনুযায়ী খরচ বের করা
     List allItems = _expenseBox.values.toList();
     List filteredItems = selectedCategoryFilter == 'সব'
         ? allItems
@@ -335,12 +293,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         title: Text(widget.isBangla ? 'স্মার্ট খরচ ট্র্যাকার' : 'Expense Tracker'),
         backgroundColor: Colors.teal.shade100,
         actions: [
-          // ১. Multi-Lang
           IconButton(
             icon: const Icon(Icons.language),
             onPressed: widget.onLangToggle,
           ),
-          // ২. Multi-Currency
           DropdownButton<String>(
             value: widget.currency,
             underline: const SizedBox(),
@@ -351,7 +307,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               if (val != null) widget.onCurrencyChange(val);
             },
           ),
-          // ৯. VIP Plan
           IconButton(
             icon: const Icon(Icons.workspace_premium, color: Colors.amber),
             onPressed: _showVIPPlanDialog,
@@ -360,7 +315,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       ),
       body: Column(
         children: [
-          // ক্যাটাগরি ফাইল সিলেক্ট করার ফিল্টার ট্যাব (বাজার, দোকান, বাড়ি খরচ)
           Container(
             height: 50,
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -385,8 +339,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               }).toList(),
             ),
           ),
-
-          // Total Balance Display Card
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             color: Colors.teal.shade50,
@@ -407,8 +359,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ),
             ),
           ),
-
-          // Notification Button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -428,10 +378,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ],
             ),
           ),
-
           const Divider(height: 15),
-
-          // ৪. Offline Database (Hive) ডাটা রেন্ডারিং ও লিস্ট ভিউ
           Expanded(
             child: filteredItems.isEmpty
                 ? Center(child: Text(widget.isBangla ? 'কোনো খরচের ফাইল পাওয়া যায়নি' : 'No expenses found'))
@@ -469,14 +416,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     },
                   ),
           ),
-
-          // ১১. AdMob Ads Banner
-          if (_isAdLoaded && _bannerAd != null)
-            SizedBox(
-              height: _bannerAd!.size.height.toDouble(),
-              width: _bannerAd!.size.width.toDouble(),
-              child: AdWidget(ad: _bannerAd!),
-            ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -487,7 +426,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ৩ & ৭. Voice Input, Camera এবং Category সহ খরচ যোগ করার উইজেট
   void _showAddExpenseModal(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -513,7 +451,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 10),
-                  // ফাইল/ক্যাটাগরি সিলেক্টর (বাজার খরচ, দোকান খরচ, বাড়ি খরচ)
                   DropdownButtonFormField<String>(
                     value: selectedCategoryForAdd,
                     decoration: const InputDecoration(labelText: 'ক্যাটাগরি/ফাইল নির্বাচন করুন'),
@@ -526,7 +463,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       }
                     },
                   ),
-                  // ৩. Voice Input
                   TextField(
                     controller: _titleController,
                     decoration: InputDecoration(
@@ -545,7 +481,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  // ৭. Doc Scanner / Camera
                   Row(
                     children: [
                       ElevatedButton.icon(
@@ -578,12 +513,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         );
       },
     );
-  }
-
-  @override
-  void dispose() {
-    _bannerAd?.dispose();
-    super.dispose();
   }
 }
 
